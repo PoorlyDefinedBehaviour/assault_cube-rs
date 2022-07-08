@@ -3,7 +3,7 @@ use std::time::Duration;
 use windows::{
   core::PCSTR,
   Win32::{
-    System::Threading::OpenProcess,
+    System::Threading::{OpenProcess, PROCESS_ALL_ACCESS},
     UI::WindowsAndMessaging::{FindWindowA, GetWindowThreadProcessId},
   },
 };
@@ -48,5 +48,9 @@ fn main() {
 
   dbg!(&process_id);
 
-  // let process_handle = OpenProcess(PROCESS_ALL_ACCESS, false, process_id)
+  let process_handle = unsafe {
+    OpenProcess(PROCESS_ALL_ACCESS, false, process_id).expect("unable to get process handle")
+  };
+
+  dbg!(&process_handle);
 }
