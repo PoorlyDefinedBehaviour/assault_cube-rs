@@ -1,6 +1,12 @@
 use std::time::Duration;
 
-use windows::{core::PCSTR, Win32::UI::WindowsAndMessaging::FindWindowA};
+use windows::{
+  core::PCSTR,
+  Win32::{
+    System::Threading::OpenProcess,
+    UI::WindowsAndMessaging::{FindWindowA, GetWindowThreadProcessId},
+  },
+};
 
 const LOCAL_PLAYER: usize = 0x509B74;
 const HEALTH_OFFSET: usize = 0xF8;
@@ -28,5 +34,19 @@ fn main() {
     }
   };
 
-  dbg!(game_window);
+  dbg!(&game_window);
+
+  let process_id = {
+    let mut id = 0_u32;
+
+    unsafe {
+      assert!(GetWindowThreadProcessId(game_window, &mut id as *mut u32) != 0);
+    }
+
+    id
+  };
+
+  dbg!(&process_id);
+
+  // let process_handle = OpenProcess(PROCESS_ALL_ACCESS, false, process_id)
 }
