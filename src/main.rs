@@ -25,7 +25,7 @@ use anyhow::{Context, Ok, Result};
 // const LOCAL_PLAYER: usize = 0x10F4F4;
 const LOCAL_PLAYER_OFFSET: usize = 0x0017E0A8;
 const HEALTH_OFFSET_FROM_LOCAL_PLAYER: usize = 0xEC;
-const RIFFLE_AMMO_OFFSET: usize = 0x150;
+const RIFFLE_AMMO_OFFSET_FROM_LOCAL_PLAYER: usize = 0x140;
 const RIFLE_AMMO_RESERVE_OFFSET: usize = 0x128;
 const PISTOL_AMMO: usize = 0x13C;
 const NAME_OFFSET: usize = 0x225;
@@ -157,16 +157,7 @@ fn main() -> Result<()> {
     module_base_addr
   );
 
-  // ammo is at 00730E10 dec [eax](eax has a pointer to 00730E10)
-  // 00730E10 <- 0x14 + 0x730DFC
-
   unsafe {
-    // let health_address = follow_pointers(
-    //   process_handle,
-    //   module_base_addr + 0x17E0A8,
-    //   vec![0x000000EC],
-    // );
-    // "ac_client.exe"+0012AEB4
     let health_address = follow_pointers(
       process_handle,
       module_base_addr + LOCAL_PLAYER_OFFSET,
@@ -174,6 +165,14 @@ fn main() -> Result<()> {
     );
 
     println!("health_address={:#x}", health_address);
+
+    let ammo_address = follow_pointers(
+      process_handle,
+      module_base_addr + LOCAL_PLAYER_OFFSET,
+      vec![RIFFLE_AMMO_OFFSET_FROM_LOCAL_PLAYER],
+    );
+
+    println!("ammo_address={:#x}", ammo_address);
 
     loop {
       let health_value = 69696969;
@@ -186,6 +185,18 @@ fn main() -> Result<()> {
         std::ptr::null_mut(),
       )
       .expect("error writing process memory");
+
+      let ammo_value = 123;
+
+      WriteProcessMemory(
+        process_handle,
+        ammo_address as _,
+        &ammo_value as *const i32 as *const c_void,
+        std::mem::size_of_val(&ammo_value),
+        std::ptr::null_mut(),
+      )
+      .expect("error writing process memory");
+
       std::thread::sleep(Duration::from_millis(100));
     }
   }
