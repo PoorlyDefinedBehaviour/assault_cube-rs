@@ -23,8 +23,8 @@ use anyhow::{Context, Ok, Result};
 
 // const LOCAL_PLAYER: usize = 0x509B74;
 // const LOCAL_PLAYER: usize = 0x10F4F4;
-const LOCAL_PLAYER: usize = 0x17B0B8;
-const HEALTH_OFFSET: usize = 0xF8;
+const LOCAL_PLAYER_OFFSET: usize = 0x0017E0A8;
+const HEALTH_OFFSET_FROM_LOCAL_PLAYER: usize = 0xEC;
 const RIFFLE_AMMO_OFFSET: usize = 0x150;
 const RIFLE_AMMO_RESERVE_OFFSET: usize = 0x128;
 const PISTOL_AMMO: usize = 0x13C;
@@ -113,15 +113,13 @@ fn get_process_id(process_name: &str) -> Result<Option<u32>> {
   Ok(None)
 }
 
-fn follow_offsets(process_handle: HANDLE, base_address: usize, offsets: Vec<usize>) -> usize {
-  let mut current_address = base_address;
+fn follow_pointers(process_handle: HANDLE, initial_address: usize, offsets: Vec<usize>) -> usize {
+  let mut current_address = initial_address;
 
   for offset in offsets.into_iter() {
-    current_address += offset;
-
     println!(
-      "following offset. base_address({:#x}) + offset=({:#x}) = {:x}",
-      base_address, offset, current_address
+      "following pointer. initial_address={:#x} current_address={:#x}",
+      initial_address, current_address
     );
 
     unsafe {
@@ -134,6 +132,8 @@ fn follow_offsets(process_handle: HANDLE, base_address: usize, offsets: Vec<usiz
       )
       .expect("error reading process memory");
     }
+
+    current_address += offset;
   }
 
   current_address
@@ -150,61 +150,34 @@ fn main() -> Result<()> {
 
   println!("got process handle. handle={process_handle:?}");
 
-  let module_base = get_module_base_address(process_id, "ac_client.exe")?.unwrap();
+  let module_base_addr = get_module_base_address(process_id, "ac_client.exe")?.unwrap();
 
-  println!("got module base address. base_address={:#x}", module_base);
+  println!(
+    "got module base address. base_address={:#x}",
+    module_base_addr
+  );
+
+  // ammo is at 00730E10 dec [eax](eax has a pointer to 00730E10)
+  // 00730E10 <- 0x14 + 0x730DFC
 
   unsafe {
-    // let address = module_base + HEALTH_OFFSET;
-    // let address = module_base + LOCAL_PLAYER;
-    // health: 0x00901E5C <- 0x000000EC + 0x901D70 <- ac_client.exe+17E0A8 or 18AC00
-    // 17E0A8 + 0x000000EC = 0x17E194
-    // 0x300a83be1
+    // let health_address = follow_pointers(
+    //   process_handle,
+    //   module_base_addr + 0x17E0A8,
+    //   vec![0x000000EC],
+    // );
+    // "ac_client.exe"+0012AEB4
+    let health_address = follow_pointers(
+      process_handle,
+      module_base_addr + LOCAL_PLAYER_OFFSET,
+      vec![HEALTH_OFFSET_FROM_LOCAL_PLAYER],
+    );
 
-    // let address = follow_offsets(process_handle, module_base + 0x18AC00, vec![0x000000EC]);
-    // println!("{:#x}", address);
-    let address = module_base + 0x17E0A8;
-
-    // 0x730CD0
-
-    let ptr_1 = {
-      let mut output_buffer = 0;
-
-      ReadProcessMemory(
-        process_handle,
-        address as _,
-        &mut output_buffer as *mut _ as *mut c_void,
-        std::mem::size_of_val(&output_buffer),
-        std::ptr::null_mut(),
-      )
-      .expect("error reading process memory");
-
-      output_buffer
-    };
-
-    println!("ptr_1={:#x}", ptr_1);
-
-    let health_address = ptr_1 as usize + 0x000000EC;
-
-    let health = {
-      let mut output_buffer = 0;
-
-      ReadProcessMemory(
-        process_handle,
-        health_address as _,
-        &mut output_buffer as *mut _ as *mut c_void,
-        std::mem::size_of_val(&output_buffer),
-        std::ptr::null_mut(),
-      )
-      .expect("error reading process memory");
-
-      output_buffer
-    };
-    dbg!(health);
+    println!("health_address={:#x}", health_address);
 
     loop {
       let health_value = 69696969;
-      println!("health_address={:#x}", health_address);
+
       WriteProcessMemory(
         process_handle,
         health_address as _,
@@ -216,36 +189,4 @@ fn main() -> Result<()> {
       std::thread::sleep(Duration::from_millis(100));
     }
   }
-
-  return Ok(());
-
-  let health = unsafe {
-    let address: i32 = (LOCAL_PLAYER + HEALTH_OFFSET) as i32;
-
-    println!("reading health at address: {address}");
-
-    let mut output_buffer = 0;
-    let mut bytes_read = 0;
-
-    let result = ReadProcessMemory(
-      process_handle,
-      // &address as *const _ as *mut c_void,
-      address as _,
-      output_buffer as _,
-      dbg!(std::mem::size_of_val(&output_buffer)),
-      // &mut bytes_read as *mut u32,
-      std::ptr::null_mut(),
-    );
-    dbg!(&result);
-    dbg!(GetLastError());
-    dbg!(bytes_read);
-    result.unwrap();
-    // .expect("error reading process memory");
-
-    output_buffer
-  };
-
-  dbg!(health);
-
-  Ok(())
 }
