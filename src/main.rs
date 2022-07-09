@@ -1,21 +1,16 @@
 use std::{ffi::c_void, time::Duration};
 
-use windows::{
-  core::PCSTR,
-  Win32::{
-    Foundation::{CloseHandle, GetLastError, HANDLE},
-    System::{
-      Diagnostics::{
-        Debug::{ReadProcessMemory, WriteProcessMemory},
-        ToolHelp::{
-          CreateToolhelp32Snapshot, Module32First, Module32Next, Process32First, Process32Next,
-          MODULEENTRY32, PROCESSENTRY32, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32,
-          TH32CS_SNAPPROCESS,
-        },
+use windows::Win32::{
+  Foundation::{CloseHandle, HANDLE},
+  System::{
+    Diagnostics::{
+      Debug::{ReadProcessMemory, WriteProcessMemory},
+      ToolHelp::{
+        CreateToolhelp32Snapshot, Module32First, Module32Next, Process32First, Process32Next,
+        MODULEENTRY32, PROCESSENTRY32, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32, TH32CS_SNAPPROCESS,
       },
-      Threading::{OpenProcess, PROCESS_ALL_ACCESS},
     },
-    UI::WindowsAndMessaging::{FindWindowA, GetWindowThreadProcessId},
+    Threading::{OpenProcess, PROCESS_ALL_ACCESS},
   },
 };
 
@@ -26,10 +21,8 @@ use anyhow::{Context, Ok, Result};
 const LOCAL_PLAYER_OFFSET: usize = 0x0017E0A8;
 const HEALTH_OFFSET_FROM_LOCAL_PLAYER: usize = 0xEC;
 const RIFFLE_AMMO_OFFSET_FROM_LOCAL_PLAYER: usize = 0x140;
-const RIFLE_AMMO_RESERVE_OFFSET: usize = 0x128;
 const PISTOL_AMMO_OFFSET_FROM_LOCAL_PLAYER: usize = 0x12C;
-const NAME_OFFSET: usize = 0x225;
-const VEST_OFFSET: usize = 0xFC;
+const GRENADE_OFFSET_FROM_LOCAL_PLAYER: usize = 0x144;
 
 fn get_module_base_address(process_id: u32, module_name: &str) -> Result<Option<usize>> {
   unsafe {
@@ -182,6 +175,14 @@ fn main() -> Result<()> {
 
     println!("pistol_ammo_address={:#x}", pistol_ammo_address);
 
+    let grenade_address = follow_pointers(
+      process_handle,
+      module_base_addr + LOCAL_PLAYER_OFFSET,
+      vec![GRENADE_OFFSET_FROM_LOCAL_PLAYER],
+    );
+
+    println!("grenade_address={:#x}", grenade_address);
+
     loop {
       let health_value = 69696969;
 
@@ -210,6 +211,17 @@ fn main() -> Result<()> {
         pistol_ammo_address as _,
         &ammo_value as *const i32 as *const c_void,
         std::mem::size_of_val(&ammo_value),
+        std::ptr::null_mut(),
+      )
+      .expect("error writing process memory");
+
+      let number_of_grenades = 100;
+
+      WriteProcessMemory(
+        process_handle,
+        grenade_address as _,
+        &number_of_grenades as *const i32 as *const c_void,
+        std::mem::size_of_val(&number_of_grenades),
         std::ptr::null_mut(),
       )
       .expect("error writing process memory");
