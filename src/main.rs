@@ -27,7 +27,7 @@ const LOCAL_PLAYER_OFFSET: usize = 0x0017E0A8;
 const HEALTH_OFFSET_FROM_LOCAL_PLAYER: usize = 0xEC;
 const RIFFLE_AMMO_OFFSET_FROM_LOCAL_PLAYER: usize = 0x140;
 const RIFLE_AMMO_RESERVE_OFFSET: usize = 0x128;
-const PISTOL_AMMO: usize = 0x13C;
+const PISTOL_AMMO_OFFSET_FROM_LOCAL_PLAYER: usize = 0x12C;
 const NAME_OFFSET: usize = 0x225;
 const VEST_OFFSET: usize = 0xFC;
 
@@ -166,13 +166,21 @@ fn main() -> Result<()> {
 
     println!("health_address={:#x}", health_address);
 
-    let ammo_address = follow_pointers(
+    let rifle_ammo_address = follow_pointers(
       process_handle,
       module_base_addr + LOCAL_PLAYER_OFFSET,
       vec![RIFFLE_AMMO_OFFSET_FROM_LOCAL_PLAYER],
     );
 
-    println!("ammo_address={:#x}", ammo_address);
+    println!("rifle_ammo_address={:#x}", rifle_ammo_address);
+
+    let pistol_ammo_address = follow_pointers(
+      process_handle,
+      module_base_addr + LOCAL_PLAYER_OFFSET,
+      vec![PISTOL_AMMO_OFFSET_FROM_LOCAL_PLAYER],
+    );
+
+    println!("pistol_ammo_address={:#x}", pistol_ammo_address);
 
     loop {
       let health_value = 69696969;
@@ -190,7 +198,16 @@ fn main() -> Result<()> {
 
       WriteProcessMemory(
         process_handle,
-        ammo_address as _,
+        rifle_ammo_address as _,
+        &ammo_value as *const i32 as *const c_void,
+        std::mem::size_of_val(&ammo_value),
+        std::ptr::null_mut(),
+      )
+      .expect("error writing process memory");
+
+      WriteProcessMemory(
+        process_handle,
+        pistol_ammo_address as _,
         &ammo_value as *const i32 as *const c_void,
         std::mem::size_of_val(&ammo_value),
         std::ptr::null_mut(),
