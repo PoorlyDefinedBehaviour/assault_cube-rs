@@ -1,8 +1,9 @@
 use std::{ffi::c_void, time::Duration};
 
 use windows::Win32::{
-  Foundation::{CloseHandle, HANDLE},
+  Foundation::{CloseHandle, BOOL, HANDLE, HINSTANCE},
   System::{
+    Console::{AllocConsole, FreeConsole},
     Diagnostics::{
       Debug::{ReadProcessMemory, WriteProcessMemory},
       ToolHelp::{
@@ -10,6 +11,7 @@ use windows::Win32::{
         MODULEENTRY32, PROCESSENTRY32, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32, TH32CS_SNAPPROCESS,
       },
     },
+    LibraryLoader::DisableThreadLibraryCalls,
     Threading::{OpenProcess, PROCESS_ALL_ACCESS},
   },
   UI::Input::KeyboardAndMouse::GetKeyState,
@@ -149,7 +151,7 @@ fn follow_pointers(process_handle: HANDLE, initial_address: usize, offsets: Vec<
   current_address
 }
 
-fn main() -> Result<()> {
+fn main_old() -> Result<()> {
   let process_id = get_process_id("ac_client.exe")?.unwrap();
 
   println!("found process. process_id={process_id}");
@@ -453,4 +455,30 @@ fn main() -> Result<()> {
       std::thread::sleep(Duration::from_millis(100));
     }
   }
+}
+
+#[no_mangle]
+#[allow(non_snake_case)]
+pub extern "system" fn DllMain(
+  dll_module: HINSTANCE,
+  call_reason: u32,
+  _reserved: *mut c_void,
+) -> BOOL {
+  const DLL_PROCESS_ATTACH: u32 = 1;
+
+  if call_reason == DLL_PROCESS_ATTACH {
+    unsafe {
+      DisableThreadLibraryCalls(dll_module).expect("error disabling thread library calls");
+
+      std::thread::spawn(|| {
+        AllocConsole();
+        loop {
+          println!("injected. thread running inside process");
+          std::thread::sleep(Duration::from_secs(3));
+        }
+      });
+    }
+  }
+
+  BOOL::from(true)
 }
