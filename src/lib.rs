@@ -115,6 +115,10 @@ impl Entity {
     unsafe { *((self.entity_starts_at_addr + HEALTH_OFFSET_FROM_LOCAL_PLAYER) as *const i32) }
   }
 
+  pub fn is_alive(&self) -> bool {
+    self.health() > 0
+  }
+
   pub fn position(&self) -> Vec3 {
     unsafe {
       Vec3 {
@@ -165,6 +169,10 @@ fn entrypoint() -> Result<()> {
       // Skip the first entity list position because it is always empty.
       for i in 1..num_players_in_match {
         let enemy = Entity::from_addr(*((entity_list_ptr as usize + i * 0x4) as *const usize));
+
+        if !enemy.is_alive() {
+          continue;
+        }
 
         let mut screen = Vec2 { x: 0.0, y: 0.0 };
 
