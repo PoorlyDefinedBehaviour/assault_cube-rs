@@ -3,13 +3,16 @@ use std::ffi::c_void;
 use windows::{
   core::PCSTR,
   Win32::{
-    Foundation::{BOOL, HINSTANCE, RECT},
+    Foundation::{GetLastError, BOOL, HINSTANCE, HWND, RECT},
     Graphics::Gdi::{CreateSolidBrush, DeleteObject, FillRect, GetDC, HBRUSH, HDC},
     System::{
       Console::{AllocConsole, FreeConsole},
       LibraryLoader::{DisableThreadLibraryCalls, FreeLibraryAndExitThread, GetModuleHandleA},
     },
-    UI::{Input::KeyboardAndMouse::GetAsyncKeyState, WindowsAndMessaging::FindWindowA},
+    UI::{
+      Input::KeyboardAndMouse::GetAsyncKeyState,
+      WindowsAndMessaging::{FindWindowA, GetWindowInfo, WINDOWINFO},
+    },
   },
 };
 
@@ -145,9 +148,9 @@ fn entrypoint() -> Result<()> {
   unsafe {
     let view_matrix = VIEW_MATRIX_ADDR as *const [f32; 16];
 
-    let window = FindWindowA(PCSTR(std::ptr::null()), "AssaultCube");
+    let window_handle = FindWindowA(PCSTR(std::ptr::null()), "AssaultCube");
 
-    let hdc = GetDC(window);
+    let hdc = GetDC(window_handle);
 
     let local_player = Entity::from_addr(*((module_base_addr + LOCAL_PLAYER_OFFSET) as *mut usize));
 
@@ -157,6 +160,8 @@ fn entrypoint() -> Result<()> {
     let entity_list_ptr = *((module_base_addr + ENTITY_LIST_OFFSET) as *const u32);
 
     let brush = CreateSolidBrush(0xFF0000);
+
+    let window = get_window_dimensions(window_handle)?;
 
     loop {
       const VK_DELETE: i32 = 0x2E;
@@ -176,16 +181,13 @@ fn entrypoint() -> Result<()> {
 
         let mut screen = Vec2 { x: 0.0, y: 0.0 };
 
-        const WINDOW_WIDTH: i32 = 1024;
-        const WINDOW_HEIGHT: i32 = 748;
-
         // If enemy cannot be mapped to 2d?
         if !world_to_screen(
           enemy.position(),
           &mut screen,
           *view_matrix,
-          WINDOW_WIDTH,
-          WINDOW_HEIGHT,
+          window.width,
+          window.height,
         ) {
           continue;
         }
@@ -194,9 +196,9 @@ fn entrypoint() -> Result<()> {
 
         let distance = calculate_3d_distance(local_player.position(), enemy_position.clone());
 
-        let width = WINDOW_WIDTH as f32 / distance;
+        let width = window.width as f32 / distance;
 
-        let height = WINDOW_HEIGHT as f32 / distance;
+        let height = window.height as f32 / distance;
 
         draw_border_box(
           hdc,
@@ -221,6 +223,31 @@ fn calculate_3d_distance(pos_a: Vec3, pos_b: Vec3) -> f32 {
     + ((pos_a.y - pos_b.y) * (pos_a.y - pos_b.y))
     + ((pos_a.z - pos_b.z) * (pos_a.z - pos_b.z)))
     .sqrt()
+}
+
+#[derive(Debug)]
+struct WindowDimensions {
+  pub width: i32,
+  pub height: i32,
+}
+
+fn get_window_dimensions(window: HWND) -> Result<WindowDimensions> {
+  let mut window_info = WINDOWINFO::default();
+  window_info.cbSize = std::mem::size_of_val(&window_info) as u32;
+
+  unsafe {
+    if GetWindowInfo(window, &mut window_info).as_bool() {
+      Ok(WindowDimensions {
+        width: window_info.rcClient.right - window_info.rcClient.left,
+        height: window_info.rcClient.bottom - window_info.rcClient.top,
+      })
+    } else {
+      Err(anyhow::anyhow!(
+        "error getting screen dimensions. last_error={:?}",
+        GetLastError()
+      ))
+    }
+  }
 }
 
 fn draw_filled_rect(hdc: HDC, brush: HBRUSH, x: i32, y: i32, width: i32, height: i32) {
