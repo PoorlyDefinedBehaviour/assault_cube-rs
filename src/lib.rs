@@ -18,25 +18,21 @@ use windows::{
 
 use anyhow::{Ok, Result};
 
-// const LOCAL_PLAYER: usize = 0x509B74;
-// const LOCAL_PLAYER: usize = 0x10F4F4;
 const LOCAL_PLAYER_OFFSET: usize = 0x109B74;
 const POSITION_X_FROM_LOCAL_PLAYER: usize = 0x4;
 const POSITION_Y_FROM_LOCAL_PLAYER: usize = 0x8;
 const POSITION_Z_FROM_LOCAL_PLAYER: usize = 0xC;
-const SOMETHING_FROM_LOCAL_PLAYER: usize = 0x150;
-const SOMETHING_FROM_LOCAL_PLAYER_2: usize = 0x164;
-const SOMETHING_FROM_LOCAL_PLAYER_3: usize = 0x64;
-const IS_PLAYER_ON_THE_FLOOR_FROM_LOCAL_PLAYER: usize = 0x5D;
 const HEALTH_OFFSET_FROM_LOCAL_PLAYER: usize = 0xf8;
-const RIFFLE_AMMO_OFFSET_FROM_LOCAL_PLAYER: usize = 0x140;
-const PISTOL_AMMO_OFFSET_FROM_LOCAL_PLAYER: usize = 0x12C;
-const GRENADE_OFFSET_FROM_LOCAL_PLAYER: usize = 0x144;
-const NAME_OFFSET: usize = 0x205;
+const NAME_OFFSET_FROM_LOCAL_PLAYER: usize = 0x225;
 const NUMBER_OF_PLAYERS_IN_MATCH_OFFSET: usize = 0x10F500;
+
+const TEAM_OFFSET_FROM_LOCAL_PLAYER: usize = 0x32c;
 
 const VIEW_MATRIX_ADDR: usize = 0x0501ae8;
 const ENTITY_LIST_OFFSET: usize = 0x10f4f8;
+
+const RED: u32 = 0x0000FF;
+const BLUE: u32 = 0xFF0000;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Vec3 {
@@ -131,6 +127,30 @@ impl Entity {
       }
     }
   }
+
+  pub fn team(&self) -> i32 {
+    unsafe { *((self.entity_starts_at_addr + TEAM_OFFSET_FROM_LOCAL_PLAYER) as *const i32) }
+  }
+
+  pub fn name(&self) -> String {
+    let buffer = unsafe {
+      *((self.entity_starts_at_addr + NAME_OFFSET_FROM_LOCAL_PLAYER) as *const [u8; 256])
+    };
+
+    let name_ends_at_index = {
+      let mut i = 0;
+
+      while buffer[i] != 0 {
+        i += 1;
+      }
+
+      i
+    };
+
+    let name = &buffer[0..name_ends_at_index];
+
+    String::from_utf8_lossy(name).to_string()
+  }
 }
 
 fn entrypoint() -> Result<()> {
@@ -159,7 +179,8 @@ fn entrypoint() -> Result<()> {
 
     let entity_list_ptr = *((module_base_addr + ENTITY_LIST_OFFSET) as *const u32);
 
-    let brush = CreateSolidBrush(0xFF0000);
+    let red_brush = CreateSolidBrush(RED);
+    let blue_brush = CreateSolidBrush(BLUE);
 
     let window = get_window_dimensions(window_handle)?;
 
@@ -173,17 +194,17 @@ fn entrypoint() -> Result<()> {
 
       // Skip the first entity list position because it is always empty.
       for i in 1..num_players_in_match {
-        let enemy = Entity::from_addr(*((entity_list_ptr as usize + i * 0x4) as *const usize));
+        let entity = Entity::from_addr(*((entity_list_ptr as usize + i * 0x4) as *const usize));
 
-        if !enemy.is_alive() {
+        if !entity.is_alive() {
           continue;
         }
 
         let mut screen = Vec2 { x: 0.0, y: 0.0 };
 
-        // If enemy cannot be mapped to 2d?
+        // If entity cannot be mapped to 2d?
         if !world_to_screen(
-          enemy.position(),
+          entity.position(),
           &mut screen,
           *view_matrix,
           window.width,
@@ -192,17 +213,23 @@ fn entrypoint() -> Result<()> {
           continue;
         }
 
-        let enemy_position = enemy.position();
+        let entity_position = entity.position();
 
-        let distance = calculate_3d_distance(local_player.position(), enemy_position.clone());
+        let distance = calculate_3d_distance(local_player.position(), entity_position);
 
         let width = window.width as f32 / distance;
 
         let height = window.height as f32 / distance;
 
+        let box_brush_color = if local_player.team() == entity.team() {
+          blue_brush
+        } else {
+          red_brush
+        };
+
         draw_border_box(
           hdc,
-          brush,
+          box_brush_color,
           (screen.x - width / 2.0) as i32,
           (screen.y - height) as i32,
           width as i32,
@@ -212,7 +239,8 @@ fn entrypoint() -> Result<()> {
       }
     }
 
-    DeleteObject(brush);
+    DeleteObject(red_brush);
+    DeleteObject(blue_brush);
   }
 
   Ok(())
